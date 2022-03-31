@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>GeoGuesser 2.1</title>
+    <meta charset="UTF-8">
+    <link rel="shortcut icon" type="image/png" href="favicon.png" />
+    <style type="text/css">
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        button {
+            width: 110px;
+            height: 25px;
+            border-radius: 5px;
+            color: white;
+            background-color: rgb(103, 37, 165);
+            font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+            font-weight: bold;
+        }
+
+        button:hover {
+            border-radius: unset;
+            background-color: rgb(153, 44, 255);
+        }
+
+        #street-view {
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            /*filter: invert(1);*/
+        }
+
+        @-moz-document url-prefix() {
+            #street-view {
+                filter: invert(1);
+            }
+        }
+
+        #floating-panel {
+            z-index: 1;
+            position: absolute;
+            color: black;
+            background-color: bisque;
+            border: 1px solid #999;
+            border-radius: 2px;
+            text-align: center;
+            width: fit-content;
+            height: 35%;
+            left: 0;
+        }
+
+        #map {
+            top: unset;
+            left: unset;
+            background-color: unset;
+            padding: unset;
+            border: unset;
+            text-align: unset;
+            font-family: unset;
+            line-height: unset;
+            padding-left: unset;
+            width: 100%;
+            height: 88%;
+
+            resize: both;
+            overflow: hidden;
+            align-items: center;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .gm-style-iw img {
+            background-color: transparent !important;
+        }
+
+        .popup {
+            color: #FFFFFF;
+            background: rgba(156, 101, 39, 0.8);
+            opacity: 1;
+            padding: 15px;
+            border-radius: 3px;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 5%;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<!--There is no intent to produce money by recreating the same concept as other websites. The goal is only educational.-->
+
+<body>
+    <div id="floating-panel">
+        <div style="display:flex; padding: 1%; margin: 1%;">
+            <button id="score" title="Current score">Score: 0</button>
+            <button id="round" title="Current round" disabled>Round: 1/10</button>
+            <button id="filter" title="Toggle color inversion" onclick="toggleFilter()"
+                style="width: min-content; background-color: red;">Colors</button>
+            <button id="loc_pref" title="Toggle location preference" onclick="toggleLocationPreference()"
+                style="width: min-content; background-color: green;">World</button>
+        </div>
+
+        <div id="map"></div>
+        <button id="guess" onclick="guess();">Guess</button>
+        <button id="next" onclick="reconfigure();" class="hidden">Next</button>
+    </div>
+
+    <div id="street-view"></div>
+
+</body>
+
+<script src="jquery-3.6.0.min.js"></script>
+<script src="index.js"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBVKH7fTxV_4vDny7uVGUi_OD03B7_pUvU&callback=initialize"
+    async></script>
+
+</html>

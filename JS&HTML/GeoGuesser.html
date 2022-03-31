@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>GeoGuesser 2.0</title>
+    <meta charset="UTF-8">
+    <link rel="shortcut icon" type="image/png" href="favicon.png" />
+    <style type="text/css">
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        button {
+            width: 100px;
+            height: 25px;
+            border-radius: 5px;
+            color: white;
+            background-color: rgb(103, 37, 165);
+            font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+            font-weight: bold;
+        }
+
+        button:hover {
+            border-radius: unset;
+            background-color: rgb(153, 44, 255);
+        }
+
+        #street-view {
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            /*filter: invert(1);*/
+        }
+
+        @-moz-document url-prefix() {
+            #street-view {
+                filter: invert(1);
+            }
+        }
+
+        #floating-panel {
+            z-index: 1;
+            position: absolute;
+            color: black;
+            background-color: bisque;
+            border: 1px solid #999;
+            border-radius: 2px;
+            text-align: center;
+            width: fit-content;
+            height: 35%;
+            left: 0;
+        }
+
+        #map {
+            top: unset;
+            left: unset;
+            background-color: unset;
+            padding: unset;
+            border: unset;
+            text-align: unset;
+            font-family: unset;
+            line-height: unset;
+            padding-left: unset;
+            width: 100%;
+            height: 88%;
+
+            resize: both;
+            overflow: hidden;
+            align-items: center;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .gm-style-iw img {
+            background-color: transparent !important;
+        }
+
+        .popup {
+            color: #FFFFFF;
+            background: rgba(156, 101, 39, 0.8);
+            opacity: 1;
+            padding: 15px;
+            border-radius: 3px;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 5%;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<!--There is no intent to produce money by recreating the same concept as other websites. The goal is only educational.-->
+
+<body>
+    <div id="floating-panel">
+        <div style="display:flex; padding: 1%; margin: 1%;">
+            <button type="button" id="score" title="Current score" disabled>Score: 0</button>
+            <button type="button" id="round" title="Current round" disabled>Round: 1/10</button>
+            <button type="button" id="filter" title="Toggle color inversion" onclick="toggleFilter()"
+                style="width: min-content; background-color: red;">Colors</button>
+            <button type="button" id="loc_pref" title="Toggle location preference" onclick="toggleLocationPreference()"
+                style="width: min-content; background-color: green;">World</button>
+        </div>
+
+        <div id="map"></div>
+        <button id="guess" onclick="guess();">Guess</button>
+        <button id="next" onclick="reconfigure();" class="hidden">Next</button>
+    </div>
+
+    <div id="street-view"></div>
+
+</body>
+
+<script>
+    let score = 0
+    let round = 1;
+    let max_round = 10;
+    let index_used = [];
+
+    let map;
+    let panorama;
+    let infoWindow;
+
+    let select_coord;
+
+    let color_inverted = true;
+    let france_selected = false;
+
+    /* 
+    {"lat": "", "lng": "", "formatted_address": ""}
+    */
+
+    var randomFranceLocations = {};
+    randomFranceLocations = [{ "lat": "49.55987167", "lng": "0.883549", "formatted_address": "D22, 76360 Bouville, France" }, { "lat": "50.76335907", "lng": "2.211839", "formatted_address": "D943, 62500 Salperwick, France" }, { "lat": "49.07050705", "lng": "0.766782", "formatted_address": "1-11 Rue des H\u00eatres, 27170 Beaumont-le-Roger, France" }, { "lat": "47.93414688", "lng": "1.839727", "formatted_address": "58 Rue de Muids, 45140 Ingr\u00e9, France" }, { "lat": "46.99619675", "lng": "4.716545", "formatted_address": "D17E, 21190 Saint-Romain, France" }, { "lat": "47.32148743", "lng": "-0.147991", "formatted_address": "15 Rue des Turcies, 49160 Saint-Martin-de-la-Place, France" }, { "lat": "43.80532837", "lng": "4.586594", "formatted_address": "Chemin de Cante Perdrix, 30300 Beaucaire, France" }, { "lat": "48.74635696", "lng": "0.366804", "formatted_address": "D932, 61230 Org\u00e8res, France" }, { "lat": "45.28609848", "lng": "5.877641", "formatted_address": "357-399 Rue de la Cascade, 38920 Crolles, France" }, { "lat": "44.78244019", "lng": "0.052695", "formatted_address": "1 Le Crassous, 33890 Coubeyrac, Frankreich" }, { "lat": "45.82164383", "lng": "3.032259", "formatted_address": "12-18 Rue des Pradeaux, 63530 Chanat-la-Mouteyre, Francja" }, { "lat": "49.00545120", "lng": "2.397457", "formatted_address": "Place Victor Hugo, 95400 Villiers-le-Bel, France" }, { "lat": "49.20783234", "lng": "2.938624", "formatted_address": "N2, 60800 L\u00e9vignen, France" }, { "lat": "47.85820770", "lng": "1.912971", "formatted_address": "2-208 All\u00e9e du Fief, 45160 Olivet, France" }, { "lat": "45.18712234", "lng": "4.295803", "formatted_address": "Le Bourg, 43290 Raucoules, France" }, { "lat": "46.35251999", "lng": "3.590637", "formatted_address": "D205, 03220 Chavroches, France" }, { "lat": "44.73898315", "lng": "-0.359043", "formatted_address": "197 Au Mouta, 33550 Haux, France" }, { "lat": "48.71125412", "lng": "-0.041096", "formatted_address": "93-103 Rue Wladimir Martel, 61200 Sarceaux, France" }, { "lat": "46.74151611", "lng": "-0.978255", "formatted_address": "Le Joblin, 85110 Saint-Prouant, France" }, { "lat": "47.45395660", "lng": "4.877103", "formatted_address": "D103, 21440 Francheville, France" }, { "lat": "48.06785583", "lng": "-1.126085", "formatted_address": "D111, 35370 Argentr\u00e9-du-Plessis, France" }, { "lat": "45.31571960", "lng": "6.994121", "formatted_address": "D902, 73480 Bessans, France" }, { "lat": "47.96898270", "lng": "0.734456", "formatted_address": "D98, 72120 Conflans-sur-Anille, France" }, { "lat": "49.19140625", "lng": "3.987465", "formatted_address": "D22, 51500 Villers-aux-N\u0153uds, France" }, { "lat": "44.67528152", "lng": "6.705249", "formatted_address": "D60, 05600 Guillestre, France" }, { "lat": "45.05152130", "lng": "0.787943", "formatted_address": "Unnamed Road, 24380 Salon, France" }, { "lat": "49.67740250", "lng": "2.650077", "formatted_address": "4 Rue Saint-Marc, 80500 Ligni\u00e8res, France" }, { "lat": "48.20506668", "lng": "5.318100", "formatted_address": "Unnamed Road, 52700 Bourdons-sur-Rognon, France" }, { "lat": "49.02435684", "lng": "-0.468044", "formatted_address": "Le Bosq d'Aune, 14220 Ouffi\u00e8res, France" }, { "lat": "47.84829330", "lng": "5.017609", "formatted_address": "Les Pr\u00e9s au Ch\u00eane, 52160 Arbot, France" }, { "lat": "48.86711121", "lng": "2.575252", "formatted_address": "10 Rue de Gournay, 77500 Chelles, France" }, { "lat": "43.08905411", "lng": "0.214587", "formatted_address": "Village, 65130 Castillon, France" }, { "lat": "46.50646210", "lng": "2.318485", "formatted_address": "72-73 Le Bourg, 18270 Sidiailles, France" }, { "lat": "47.25624847", "lng": "6.700494", "formatted_address": "D464, 25380 Cour-Saint-Maurice, France" }, { "lat": "46.46455765", "lng": "3.415413", "formatted_address": "78 Rue du Bois de Bord, 03340 Neuilly-le-R\u00e9al, France" }, { "lat": "43.91119003", "lng": "4.407474", "formatted_address": "245 Impasse des Chanterelles, 30320 Poulx, France" }, { "lat": "42.56714630", "lng": "8.742827", "formatted_address": "606 Tramariccia, 20260 Calvi, France" }, { "lat": "44.58695984", "lng": "5.686441", "formatted_address": "D28, 05140 Montbrand, France" }, { "lat": "44.52844238", "lng": "0.436084", "formatted_address": "Unnamed Road, 47380 Tombeb\u0153uf, France" }, { "lat": "45.51792145", "lng": "3.422386", "formatted_address": "D89, 63580 Cham\u00e9ane, France" }, { "lat": "43.18518448", "lng": "5.661907", "formatted_address": "3 D559, 13600 La Ciotat, France" }, { "lat": "47.30722809", "lng": "4.269789", "formatted_address": "D26, 21210 Villargoix, France" }, { "lat": "42.11856461", "lng": "8.652686", "formatted_address": "D81, 20130 Carg\u00e8se, \u30d5\u30e9\u30f3\u30b9" }, { "lat": "44.36718750", "lng": "-0.633388", "formatted_address": "610 Route de Saint-Symphorien, 40430 Argelouse, France" },
+    { "lat": "44.08551025", "lng": "-0.157167", "formatted_address": "6 Route de Vielle Soubiran, 40240 Losse, France" }, { "lat": "48.85031027887418", "lng": "2.280055435619285", "formatted_address": "L'île  aux Cygnes" }, { "lat": "44.6074057259327", "lng": "2.031058681945047", "formatted_address": "Figeac" }, { "lat": "46.16813951883182", "lng": "1.8738379762369695", "formatted_address": "Guéret, Creuse" }, { "lat": "45.953464158514166", "lng": "1.7570900576861848", "formatted_address": "Bourganeuf, Creuse" },
+    { "lat": "45.7633746047517", "lng": "4.834219475963241", "formatted_address": "Lyon" }, { "lat": "43.59462577548679", "lng": "1.448878838591354", "formatted_address": "Toulouse" },
+    { "lat": "44.86879846322806", "lng": "-0.5907870403891924", "formatted_address": "2 impasse Pompière, Le Bouscat, Bordeaux" }, { "lat": "48.817179733357115", "lng": "2.129049028909119", "formatted_address": "Versailles" }, { "lat": "48.8730506730104", "lng": "2.182596688533218", "formatted_address": "Rueil-Malmaison" },
+    { "lat": "48.77614978391293", "lng": "1.990004229540659", "formatted_address": "Trappes" }
+    ];
+
+    var randomLocations = {};
+    randomLocations = [{ "lat": "15.82441616", "lng": "101.838303", "formatted_address": "Unnamed Road, Tambon Talat Raeng, Amphoe Ban Khwao, Chang Wat Chaiyaphum 36170, Thailand" }, { "lat": "58.49505234", "lng": "5.807278", "formatted_address": "Nordsj\u00f8vegen, 4364 Sirev\u00e5g, Norway" }, { "lat": "16.87000084", "lng": "-99.817085", "formatted_address": "Ciudad P\u00e9rdida 10, La Sabana, 39799 Acapulco, Guerrero, Mexico" }, { "lat": "55.55073547", "lng": "22.265993", "formatted_address": "E85, 75492, Litwa" }, { "lat": "42.11227798", "lng": "-1.822601", "formatted_address": "Calle Jos\u00e9 Luis Arrese, 31591 Corella, Navarre, Spanien" }, { "lat": "45.71424866", "lng": "21.206326", "formatted_address": "Aleea Nicore\u015fti, Timi\u0219oara, Romania" }, { "lat": "38.34711075", "lng": "22.905979", "formatted_address": "Epar.Od. Agiou Georgiou-Agias Annas 276, Ag. Triada 321 00, Greece" },
+    { "lat": "24.86325073", "lng": "55.178013", "formatted_address": "Emirates Rd - Dubai - Emiratele Arabe Unite" }, { "lat": "45.38508987", "lng": "14.354772", "formatted_address": "Gornji Turki, 51215, Brn\u010di\u0107i, Chorwacja" }, { "lat": "48.12480164", "lng": "17.076136", "formatted_address": "E65, 851 01 Petr\u017ealka, Slovakia" }, { "lat": "59.35496521", "lng": "13.787681", "formatted_address": "ARN\u00d6N 210, 660 57 V\u00e4se, Sweden" }, { "lat": "46.58872223", "lng": "18.435047", "formatted_address": "7064 Gy\u00f6nk, 6313, W\u0119gry" }, { "lat": "52.53569794", "lng": "16.469717", "formatted_address": "Droga Wojew\u00f3dzka 306, Poland" }, { "lat": "-18.77832222", "lng": "145.802628", "formatted_address": "787 Oak Hills Rd, Mount Fox QLD 4850, Australia" }, { "lat": "43.04376221", "lng": "-90.656395", "formatted_address": "14813-14953 County Road T, Fennimore, WI 53809, USA" }, { "lat": "-5.21885109", "lng": "-39.303082", "formatted_address": "CE-166, Quixeramobim - CE, 63800-000, Brazil" }, { "lat": "10.98095989", "lng": "105.177795", "formatted_address": "101, Cambodia" }, { "lat": "51.43020630", "lng": "24.600740", "formatted_address": "\u041c19, Butsyn, Volyns'ka oblast, Ukraine" }, { "lat": "38.87070847", "lng": "-7.204943", "formatted_address": "N4, 7350, Portugal" }, { "lat": "-25.03465843", "lng": "23.237131", "formatted_address": "A20, Botswana" }, { "lat": "54.84004211", "lng": "-8.473377", "formatted_address": "4, Portnoo, Co. Baie de Donegal, Irlande" }, { "lat": "49.08654022", "lng": "14.844007", "formatted_address": "Novosedly nad Ne\u017e\u00e1rkou 205, 378 17 Novosedly nad Ne\u017e\u00e1rkou, Czech Republic" }, { "lat": "51.94570160", "lng": "4.441118", "formatted_address": "Van der Duijn van Maasdamweg 601, 3045 PE Rotterdam, The Netherlands" }, { "lat": "8.15388107", "lng": "-76.039757", "formatted_address": "Unnamed Road, Tierralta, C\u00f3rdoba, Colombia" }, { "lat": "-25.30661583", "lng": "27.192694", "formatted_address": "Unnamed Road, Mabele-a-Podi, 0354, South Africa" }, { "lat": "-40.23200226", "lng": "175.733154", "formatted_address": "720 Watershed Road, Bunnythorpe 4470, New Zealand" }, { "lat": "64.03507233", "lng": "-22.702345", "formatted_address": "Vallargata, Sandger\u00f0i, Islandia" }, { "lat": "46.51375580", "lng": "14.860552", "formatted_address": "Kopali\u0161ka pot 11, 2392 Me\u017eica, Slovenia" }, { "lat": "56.67219162", "lng": "24.362980", "formatted_address": "P89, Baldones lauku teritorija, LV-2125, Latvia" }, { "lat": "59.31916809", "lng": "26.437658", "formatted_address": "88, 46610 L\u00e4\u00e4ne-Viru County, Estonia" }, { "lat": "32.69358063", "lng": "35.313286", "formatted_address": "Harod Street 1, Nazareth Iliit, \u0130srail" }, { "lat": "44.13747787", "lng": "9.762489", "formatted_address": "Via Giacomo Matteotti, 6, 19020 Quaratica La Spezia, Italy" }, { "lat": "43.33696747", "lng": "24.321306", "formatted_address": "E83, Sadovets, Bulgarien" }, { "lat": "58.65501404", "lng": "35.973080", "formatted_address": "49K-14, Novgorodskaya oblast', Russia" }, { "lat": "46.71569443", "lng": "6.412976", "formatted_address": "9, 1337 Vallorbe, Szwajcaria" }, { "lat": "56.93602371", "lng": "-6.147273", "formatted_address": "Unnamed Road, Isle of Eigg, Highland PH42 4RL, UK" }, { "lat": "56.95734024", "lng": "9.411237", "formatted_address": "Halk\u00e6rvej 210, 9240 Nibe, Denmark" }, { "lat": "-26.45434380", "lng": "31.079685", "formatted_address": "MR19, Swaziland" }, { "lat": "-34.46489716", "lng": "-71.401268", "formatted_address": "I-318, Peralillo, VI Regi\u00f3n, Chile" }, { "lat": "43.38306046", "lng": "0.327032", "formatted_address": "D567, 32170 Sarraguzan, France" }, { "lat": "27.28003120", "lng": "89.304794", "formatted_address": "Chhudzom - Haa Rd, Bhutan" }, { "lat": "60.09556580", "lng": "22.420746", "formatted_address": "Verkviksv\u00e4gen 161, 25870 Kimito\u00f6n, Finland" }, { "lat": "50.88266754", "lng": "4.471967", "formatted_address": "Stationsstraat 46-56, 1930 Zaventem, Belgia" }, { "lat": "54.49361038", "lng": "9.076667", "formatted_address": "Otto-Hahn-Stra\u00dfe 3, 25813 Husum, Germany" }, { "lat": "52.21320343", "lng": "5.171705", "formatted_address": "Cameliastraat 9-11, 1214 EZ Hilversum, Holandia" }, { "lat": "64.07704163", "lng": "-21.944914", "formatted_address": "Helluhraun, Hafnarfj\u00f6r\u00f0ur, Islande" }, { "lat": "45.39272308", "lng": "11.387163", "formatted_address": "Via Bonioli, 68, 36045 Lonigo Vicenza, Italy" }, { "lat": "56.98548889", "lng": "23.468525", "formatted_address": "Malienas iela 16, \u0136emeru nacion\u0101lais parks, Lapme\u017eciems, Lapme\u017eciema pagasts, LV-3118, Latvia" }, { "lat": "54.86057663", "lng": "24.108391", "formatted_address": "J. Bili\u016bno gatv\u0117, \u0160lienava 53121, Lithuania" }, { "lat": "52.43640137", "lng": "15.586030", "formatted_address": "Konstytucji 3 Maja 61, 66-300 Mi\u0119dzyrzecz, Poland" }, { "lat": "46.06224442", "lng": "7.010334", "formatted_address": "Route de la Forclaz, 1921 Martigny-Combe, \u0130svi\u00e7re" }, { "lat": "13.70132065", "lng": "105.330437", "formatted_address": "Unnamed Road, Cambodia" }, { "lat": "59.55902481", "lng": "15.591151", "formatted_address": "859, 710 41 Fellingsbro, Sweden" }, { "lat": "68.47917938", "lng": "28.450447", "formatted_address": "91 4496-4506, 99800 Inari, Finland" }, { "lat": "59.37362289", "lng": "24.808846", "formatted_address": "Algi tee 2, J\u00e4rvek\u00fcla, 75304 Comt\u00e9 de Harju, Estonie" }, { "lat": "46.84022141", "lng": "24.734928", "formatted_address": "DC163, Roumanie" }, { "lat": "-39.63227081", "lng": "-66.492424", "formatted_address": "RP62, R\u00edo Negro, Argentina" }, { "lat": "-34.65958786", "lng": "116.704117", "formatted_address": "Thomson Rd, North Walpole WA 6398, Australia" }, { "lat": "19.81922913", "lng": "-100.025620", "formatted_address": "M\u00e9xico 5, State of Mexico, Mexico" },
+    { "lat": "-23.21986008", "lng": "20.263062", "formatted_address": "Unnamed Road, Botswana" }, { "lat": "46.40883636", "lng": "16.690796", "formatted_address": "E71, 40320, Hodo\u0161an, Croatia" }, { "lat": "37.90609360", "lng": "-88.305336", "formatted_address": "22301-22999 Illinois 1, Omaha, Illinois 62871, Stati Uniti" }, { "lat": "53.48305511", "lng": "-2.389923", "formatted_address": "M62, Worsley, Manchester, Greater Manchester M30 8JW, UK" }, { "lat": "49.97592545", "lng": "5.493299", "formatted_address": "Rue du Centre, 6800 Libramont-Chevigny, Belgium" }, { "lat": "55.62582016", "lng": "12.492844", "formatted_address": "S\u00f8liljevej 28, 2650 Hvidovre, Denmark" }, { "lat": "-27.26935196", "lng": "31.799437", "formatted_address": "MR11, Suazi" }, { "lat": "29.27852058", "lng": "-13.488502", "formatted_address": "Unnamed Road, 35540 Teguise, Las Palmas, Spain" }, { "lat": "50.47336960", "lng": "30.480471", "formatted_address": "Tropinina street, 9, Kyyiv, Kyiv city, Ukraine" }, { "lat": "-41.26000214", "lng": "174.057709", "formatted_address": "193 Port Underwood Road, Waikawa 7281, Nowa Zelandia" }, { "lat": "49.22234344", "lng": "21.372637", "formatted_address": "545018, 086 21 Ni\u017en\u00e1 Vo\u013ea, Slovakia" }, { "lat": "14.83224583", "lng": "104.304497", "formatted_address": "Unnamed Road, Tambon Non Pun, Amphoe Phrai Bueng, Chang Wat Si Sa Ket 33180, Tha\u00eflande" }, { "lat": "5.60519791", "lng": "-75.813705", "formatted_address": "Jard\u00edn - Tamesis, Jard\u00edn, Antioquia, Colombia" }, { "lat": "-25.50645065", "lng": "27.316603", "formatted_address": "R510, South Africa" }, { "lat": "27.36482811", "lng": "89.912323", "formatted_address": "Wangdue - Tsirang Hwy, Bhutan" }, { "lat": "46.06489563", "lng": "14.575848", "formatted_address": "Jar\u0161e, Slovenia" }, { "lat": "47.40807724", "lng": "21.784389", "formatted_address": "Monostorp\u00e1lyi, Bajcsy-Zsilinszky u. 64, 4275 Hungary" }, { "lat": "49.38223267", "lng": "17.445875", "formatted_address": "\u0158\u00edkovice 138, 751 18 \u0158\u00edkovice, Czech Republic" }, { "lat": "49.51641083", "lng": "0.800910", "formatted_address": "304 Route de Saint-Wandrille, 76480 Sainte-Marguerite-sur-Duclair, France" }, { "lat": "2.89084411", "lng": "101.927063", "formatted_address": "17, N34, Kampung Solok, 71750 Mantin, Negeri Sembilan, Malaysia" }, { "lat": "52.57576370", "lng": "-9.252982", "formatted_address": "Unnamed Road, Co. Limerick, Ireland" }, { "lat": "1.37254596", "lng": "103.856163", "formatted_address": "529 Ang Mo Kio Ave 10, Singapur 560529" }, { "lat": "42.93804550", "lng": "23.982019", "formatted_address": "3, Osikovitsa, Bulgaria" }, { "lat": "-14.94133759", "lng": "-41.675598", "formatted_address": "BA-263, Pirip\u00e1 - BA, 46270-000, Brazil" }, { "lat": "49.55051804", "lng": "15.764331", "formatted_address": "35211, 582 22 Ole\u0161enka, Czech Republic" }, { "lat": "2.38653302", "lng": "-60.823891", "formatted_address": "Unnamed Road, Cant\u00e1 - RR, 69390-000, Brazil" }, { "lat": "50.45706940", "lng": "34.944611", "formatted_address": "Unnamed Road, Trostianets', Sums'ka oblast, Ukraine, 42602" }, { "lat": "23.08135796", "lng": "89.862732", "formatted_address": "Tekerhat - Gopalganj Rd, \u0628\u0646\u06af\u0644\u0627\u062f\u0634" }, { "lat": "56.88373184", "lng": "21.201159", "formatted_address": "Dzintaru iela 97-99, P\u0101vilosta, P\u0101vilostas pils\u0113ta, LV-3466, Latvia" }, { "lat": "40.41070938", "lng": "-7.926760", "formatted_address": "N337, 3405, Portugal" }, { "lat": "4.97718000", "lng": "-73.745979", "formatted_address": "Unnamed Road, Sesquil\u00e9, Cundinamarca, Colombia" }, { "lat": "-34.02083588", "lng": "117.297836", "formatted_address": "Tambellup W Rd, Lumeah WA 6395, Australia" }, { "lat": "43.12722015", "lng": "23.858543", "formatted_address": "103, 3130 Roman, Bulgaria" }, { "lat": "-34.24911880", "lng": "21.377117", "formatted_address": "R305, South Africa" }, { "lat": "10.91858673", "lng": "105.053642", "formatted_address": "Unnamed Road, Kambodja" }, { "lat": "57.95368958", "lng": "27.619539", "formatted_address": "Metsa 14, Lobotka, 64012 Comt\u00e9 de P\u00f5lva, Estonie" }, { "lat": "28.78851509", "lng": "-17.772528", "formatted_address": "Camino Berm\u00fadez, 35, 38729, Santa Cruz de Tenerife, Spain" }, { "lat": "46.59733582", "lng": "18.816900", "formatted_address": "7030 Paks, 6233, Hongrie" }, { "lat": "-40.73980331", "lng": "-71.890671", "formatted_address": "Paso Int Cardenal Samor\u00e9, Neuqu\u00e9n, Argentyna" }, { "lat": "16.05110359", "lng": "102.537270", "formatted_address": "Unnamed Road, Tambon Non Payom, Amphoe Chonnabot, Chang Wat Khon Kaen 40180, Thailand" }, { "lat": "-41.98517990", "lng": "-72.562820", "formatted_address": "Carr Austral, Hualaihu\u00e9, X Regi\u00f3n, Chile" }, { "lat": "51.31286621", "lng": "10.569018", "formatted_address": "Holzthalebener Str. 15, 99996 Menteroda, Germany" },
+    { "lat": "44.82891083", "lng": "-94.336288", "formatted_address": "14530-15170 Page Ave, Hutchinson, MN 55350\u7f8e\u570b" }, { "lat": "43.59190750", "lng": "16.627007", "formatted_address": "E65, 21204, Dugopolje, Croatia" }, { "lat": "48.50874329", "lng": "18.098095", "formatted_address": "1706, 956 11 Ludanice, Slovakia" }, { "lat": "50.45478439", "lng": "4.188063", "formatted_address": "Place Adolphe Caffet 12, 7100 La Louvi\u00e8re, Belgium" }, { "lat": "45.15309143", "lng": "24.055269", "formatted_address": "DJ646, V\u0103ratici, Romania" }, { "lat": "62.47247314", "lng": "14.215212", "formatted_address": "315, 840 32 Kl\u00f6vsj\u00f6, Sweden" }, { "lat": "45.55762100", "lng": "5.966814", "formatted_address": "411-437 Rue de l'\u00c9glise, 73490 La Ravoire, France" }, { "lat": "52.07514954", "lng": "6.299988", "formatted_address": "De Horst 3, 7251 PR Vorden, Pays-Bas" }, { "lat": "37.33551025", "lng": "23.134764", "formatted_address": "Unnamed Road, Ververouda 213 00, Greece" }, { "lat": "-36.99605560", "lng": "174.900574", "formatted_address": "7-9 Sesame Grove, Goodwood Heights, Auckland 2105, New Zealand" }, { "lat": "46.52760696", "lng": "15.697717", "formatted_address": "E59, 2000 Maribor, S\u0142owenia" }, { "lat": "32.83560944", "lng": "35.054611", "formatted_address": "Sderot HaNassi Truman, Hajfa, Izrael" }, { "lat": "60.24283981", "lng": "25.016788", "formatted_address": "Gamla Helsingev\u00e4gen 2, 00700 Helsinki, Finland" }, { "lat": "55.32791901", "lng": "12.102246", "formatted_address": "\u00d8sterskovvej 39, 4682 Tureby, Denmark" }, { "lat": "-26.27095795", "lng": "31.074333", "formatted_address": "MR3, Swaziland" }, { "lat": "53.91268539", "lng": "14.239621", "formatted_address": "72-600, Poland" }, { "lat": "23.97614479", "lng": "120.586800", "formatted_address": "No. 266-282, Lane 332, Section 1, Fuzhen Rd, Yuanlin City, Changhua County, Taiwan 510" }, { "lat": "47.05262375", "lng": "7.481601", "formatted_address": "Jegenstorfstrasse 6, 3303 Zuzwil, Switzerland" }, { "lat": "55.63150406", "lng": "23.753469", "formatted_address": "3414, Bejsago\u0142a 82296, Litwa" }, { "lat": "40.35861206", "lng": "16.304693", "formatted_address": "Contrada Calvera, 75018 Stigliano MT, Italy" }, { "lat": "53.19028473", "lng": "-1.282139", "formatted_address": "39 Park Avenue, Glapwell, Chesterfield, Derbyshire S44 5PZ, UK" }, { "lat": "15.78109169", "lng": "-96.076767", "formatted_address": "Unnamed Road, Garita, Oax., Mexico" }, { "lat": "-17.85629654", "lng": "25.227856", "formatted_address": "A33, Botswana" }, { "lat": "52.63105011", "lng": "-8.354122", "formatted_address": "Unnamed Road, Co. Limerick, Ireland" }, { "lat": "6.96452904", "lng": "-75.370262", "formatted_address": "Unnamed Road, Yarumal, Antioquia, Colombia" }, { "lat": "-23.38518906", "lng": "27.534422", "formatted_address": "R510, South Africa" }, { "lat": "41.45883179", "lng": "24.315664", "formatted_address": "Unnamed Road, Drama 661 00, Greece" }, { "lat": "20.10120773", "lng": "-98.834358", "formatted_address": "25 de julio, 42110 Hidalgo, Mexico" }, { "lat": "32.95507431", "lng": "35.211445", "formatted_address": "8533, Yarka, Israel" }, { "lat": "48.00222778", "lng": "18.158297", "formatted_address": "Kr\u00e1tka, 940 02 Nov\u00e9 Z\u00e1mky, Slovakia" }, { "lat": "56.43543243", "lng": "26.791801", "formatted_address": "P58, Stabulnieku pagasts, LV-5333, Latvia" }, { "lat": "61.76846695", "lng": "11.459456", "formatted_address": "Rv217 1230, 2485 Rendalen, Norway" }, { "lat": "-26.37922287", "lng": "31.955282", "formatted_address": "MR7, Swaziland" }, { "lat": "45.50388718", "lng": "15.526557", "formatted_address": "Ulica Mirka Seljana 43, 47000, K\u00e1rolyv\u00e1ros, Horv\u00e1torsz\u00e1g" }, { "lat": "63.48694229", "lng": "-18.537205", "formatted_address": "\u00dej\u00f3\u00f0vegur, Iceland" }, { "lat": "49.69429779", "lng": "16.757010", "formatted_address": "3718, 569 43 Bezd\u011b\u010d\u00ed u Trn\u00e1vky, Czech Republic" }, { "lat": "67.13632202", "lng": "24.069283", "formatted_address": "Lohinivantie 43, 95800 Kolari, Finland" }, { "lat": "-34.46792603", "lng": "148.659805", "formatted_address": "Boorowa Harden Road, Boorowa Nowa Po\u0142udniowa Walia 2586, Australia" }, { "lat": "47.58330917", "lng": "5.056040", "formatted_address": "D120, 21120 Marey-sur-Tille, France" }, { "lat": "51.80740738", "lng": "19.536352", "formatted_address": "Opolska 75, \u0141\u00f3d\u017a, Polonia" }, { "lat": "56.06913376", "lng": "21.065033", "formatted_address": "Kur\u0161i\u0173 tak., Palanga 00316, Lithuania" }, { "lat": "-11.99104309", "lng": "-41.234436", "formatted_address": "BA-046, Bonito - BA, 46820-000, Brazil" }, { "lat": "46.20504761", "lng": "6.162056", "formatted_address": "Rue Sillem 3, 1207 Geneva, Switzerland" }, { "lat": "-18.83129501", "lng": "25.601471", "formatted_address": "A33, Botswana" }, { "lat": "46.02305222", "lng": "23.118357", "formatted_address": "DJ705, Bal\u015fa, Rumunia" }, { "lat": "54.42661285", "lng": "12.471338", "formatted_address": "Unnamed Road, 18375 Born, Germany" }, { "lat": "50.61456299", "lng": "27.265978", "formatted_address": "E40, Zhytomyrs'ka oblast, Ukraine" }, { "lat": "37.51457214", "lng": "126.863319", "formatted_address": "South Korea, Seoul, Sinjeong-dong, 1302 \ubaa9\ub3d913\ub2e8\uc9c0\uc544\ud30c\ud2b8" }, { "lat": "55.67335510", "lng": "12.392434", "formatted_address": "Nordre Ringvej 97, 2600 Glostrup, D\u00e4nemark" }, { "lat": "57.91717911", "lng": "25.874489", "formatted_address": "Piiri-Jeti, 68513 Valga County, Estonia" }, { "lat": "50.13601685", "lng": "5.049246", "formatted_address": "Rue de Rochefort 595, 5572 Beauraing, Belgium" }, { "lat": "42.23996735", "lng": "12.930661", "formatted_address": "Via Turanense, 17, 02026 Posticciola RI, Italy" }, { "lat": "14.89700985", "lng": "99.274681", "formatted_address": "Unnamed Road, Tambon Khao Chot, Amphoe Si Sawat, Chang Wat Kanchanaburi 71220, Thailand" },
+    { "lat": "42.62899399", "lng": "24.952826", "formatted_address": "607, 4370 Kalofer, Bulgaria" }, { "lat": "13.50123405", "lng": "102.743553", "formatted_address": "Unnamed Road, Cambodia" }, { "lat": "46.27579498", "lng": "19.234011", "formatted_address": "Borota, 5414, 6445 Hungary" }, { "lat": "52.50974274", "lng": "-0.648587", "formatted_address": "Gretton Road, Corby, Northamptonshire NN17, UK" }, { "lat": "-37.10865021", "lng": "175.090942", "formatted_address": "353-355 Gelling Road, Hunua 2583, Nowa Zelandia" }, { "lat": "37.79109955", "lng": "-77.150864", "formatted_address": "186-222 Vessels Ln, Aylett, VA 23009, USA" }, { "lat": "27.66280746", "lng": "90.748291", "formatted_address": "Unnamed Road, Bhutan" }, { "lat": "52.14733124", "lng": "6.701377", "formatted_address": "Eibergsestraat 191, 7481 HJ Haaksbergen, Pays-Bas" }, { "lat": "35.98984146", "lng": "139.078598", "formatted_address": "Japan, \u3012368-0035 Saitama-ken, Chichibu-shi, Kamimachi, 2 Chome\u22127 \u770c\u905373\u53f7\u7dda" }, { "lat": "45.78603363", "lng": "14.766352", "formatted_address": "Kolen\u010da vas 6, 1313 Struge, Slowenien" }, { "lat": "52.66551208", "lng": "-8.113932", "formatted_address": "Unnamed Road, Co. Tipperary, Ireland" }, { "lat": "61.45774078", "lng": "74.656372", "formatted_address": "Surgut - Nizhnevartovsk, Khanty-Mansiyskiy avtonomnyy okrug, Russia" }, { "lat": "-28.62131310", "lng": "-65.858101", "formatted_address": "Unnamed Road, El Ba\u00f1ado, Catamarca, Argentina" }, { "lat": "62.74104309", "lng": "14.585127", "formatted_address": "546, 840 40 Svenstavik, Sweden" }, { "lat": "46.08805466", "lng": "-118.910255", "formatted_address": "US-12, Burbank, WA 99323, USA" }, { "lat": "59.11420822", "lng": "-2.551904", "formatted_address": "Unnamed Road, Orkney, Orkney KW17 2AG, UK" }, { "lat": "32.43285370", "lng": "-115.270203", "formatted_address": "Baja California 2, Ejido Guanajuato, Baja California, Mexico" }, { "lat": "46.43567276", "lng": "14.060746", "formatted_address": "Trg Toneta \u010cufarja 1, 4270 Jesenice, Slovenia" }, { "lat": "50.95903397", "lng": "22.177559", "formatted_address": "Marii Konopnickiej 36A, Kra\u015bnik, Polska" }, { "lat": "-25.85170555", "lng": "31.364857", "formatted_address": "MR1, Suazi" }, { "lat": "48.51054001", "lng": "19.307323", "formatted_address": "2463, 962 25 Slatinsk\u00e9 Lazy, Slovakia" }, { "lat": "43.66051102", "lng": "39.657867", "formatted_address": "ulitsa Gaydara, 2, Sochi, Krasnodar Krai, Russia, 354000" }, { "lat": "54.45563889", "lng": "13.311022", "formatted_address": "Pansevitz 4, 18569 Kluis, Germany" }, { "lat": "66.03577423", "lng": "15.067060", "formatted_address": "Bl\u00e5 v\u00e4gen, 920 66 Hemavan, Svezia" }, { "lat": "42.97659683", "lng": "140.669708", "formatted_address": "114 Kozawa, Ky\u014dwa-ch\u014d, Iwanai-gun, Hokkaid\u014d 048-2142, Japan" }, { "lat": "55.57033539", "lng": "8.207061", "formatted_address": "Bl\u00e5vandvej 66, 6857 Bl\u00e5vand, Denmark" }, { "lat": "-41.11181259", "lng": "174.867523", "formatted_address": "3-5 Moray Place, Papakowhai, Porirua 5024, New Zealand" }, { "lat": "64.29164886", "lng": "-15.119166", "formatted_address": "\u00dej\u00f3\u00f0vegur, Iceland" }, { "lat": "51.14398956", "lng": "3.040753", "formatted_address": "Bekegemstraat 2-6, 8480 Ichtegem, Belgium" }, { "lat": "46.01384735", "lng": "4.008413", "formatted_address": "377-661 Chemin des Sources, 42155 Ouches, France" }, { "lat": "-19.97697639", "lng": "26.160753", "formatted_address": "A33, Botswana" }, { "lat": "52.03829575", "lng": "-8.615354", "formatted_address": "N20, Co. Cork, Ireland" }, { "lat": "45.01425171", "lng": "26.040979", "formatted_address": "Strada P\u0103durii, Bolde\u015fti-Sc\u0103eni, Rumunia" }, { "lat": "55.81773376", "lng": "21.644562", "formatted_address": "3213 42, Kuliai 90370, Litva" }, { "lat": "61.59575653", "lng": "25.885361", "formatted_address": "Ylemm\u00e4istentie 520, 19600 Hartola, Finlande" }, { "lat": "45.97935486", "lng": "16.258268", "formatted_address": "\u010cre\u010dan, 10380, \u010cre\u010dan, Croatie" }, { "lat": "52.13084412", "lng": "4.388995", "formatted_address": "Backershagenlaan 7, 2243 AB Wassenaar, Reino da Holanda" }, { "lat": "38.46760559", "lng": "15.988469", "formatted_address": "E45, 89025 Gioia Tauro, Reggio Calabria, Italy" }, { "lat": "43.98513794", "lng": "22.852757", "formatted_address": "ulitsa \\\"Rositsa\\\" 39-41, 3702 Vidin, Bulgaria" }, { "lat": "58.54406738", "lng": "22.849699", "formatted_address": "Tagavere-Randk\u00fcla, 94660 Saaremaa, Estonia" }, { "lat": "57.20978928", "lng": "25.041891", "formatted_address": "Siguldas iela 1, Gauja National Park, L\u012bgatne, L\u012bgatnes pils\u0113ta, LV-4110, Latvia" }, { "lat": "11.31750965", "lng": "105.387550", "formatted_address": "Unnamed Road, Cambodia" }, { "lat": "30.01890373", "lng": "35.091778", "formatted_address": "90, \u0130srail" }, { "lat": "46.75566864", "lng": "6.633285", "formatted_address": "E25, 1432 Belmont-sur-Yverdon, Switzerland" }, { "lat": "38.71284485", "lng": "-2.313066", "formatted_address": "Unnamed Road, 02314 Masegoso, Albacete, Spain" }, { "lat": "-12.70187187", "lng": "-44.382137", "formatted_address": "Estr. p\/ T\u00e1bua, Baian\u00f3polis - BA, 47830-000, Braz\u00edlie" }, { "lat": "47.01017380", "lng": "18.376574", "formatted_address": "8123 Soponya, 6301, Hungary" }, { "lat": "16.99561882", "lng": "99.953552", "formatted_address": "Unnamed Road, Tambon Krai Nai, Amphoe Kong Krailat, Chang Wat Sukhothai 64170, Thailand" },
+    { "lat": "49.79800034", "lng": "14.866402", "formatted_address": "113, 257 26 Divi\u0161ov, Czech Republic" }, { "lat": "4.75207090", "lng": "-74.061798", "formatted_address": "Calle 168 # 62-2 a 62-100, Bogot\u00e1, Cundinamarca, Colombia" }, { "lat": "-31.65527344", "lng": "18.713310", "formatted_address": "N7, Vanrhynsdorp 8170, Afrique du Sud" }, { "lat": "59.43965530", "lng": "10.635503", "formatted_address": "Per Sivles vei 19, 1511 Moss, Norway" }, { "lat": "49.76611710", "lng": "7.831509", "formatted_address": "Friedhofstra\u00dfe 4, 55585 Hochst\u00e4tten, Germany" }, { "lat": "40.09789276", "lng": "-2.222620", "formatted_address": "Calle Olmo, 5, 16190 Chillar\u00f3n de Cuenca, Cuenca, Spain" }, { "lat": "40.91178131", "lng": "8.695342", "formatted_address": "Strada Statale 200 dell'Anglona, 07031 Castelsardo SS, Italy" }, { "lat": "2.78288198", "lng": "101.800735", "formatted_address": "362, 71900 Labu, Negeri Sembilan, Malaysia" }, { "lat": "49.02439880", "lng": "20.586040", "formatted_address": "Nov\u00e1 71-72, 054 01 Levo\u010da, S\u0142owacja" }, { "lat": "54.72039413", "lng": "25.226664", "formatted_address": "Taikos gatv\u0117 18, Wilno 05218, Litwa" }, { "lat": "37.73522568", "lng": "-76.509010", "formatted_address": "26 Woodbrook Rd, Lancaster, VA 22503, USA" }, { "lat": "56.61832428", "lng": "25.824051", "formatted_address": "P37, Aiviekstes pagasts, LV-5120, \u0141otwa" }, { "lat": "52.23796463", "lng": "17.004993", "formatted_address": "DW431 5, 62-022, Polen" }, { "lat": "60.90649414", "lng": "16.726917", "formatted_address": "S\u00e4byggebyv\u00e4gen 86, 816 31 Ockelbo, Sweden" }, { "lat": "51.12544250", "lng": "5.190546", "formatted_address": "Heidehuizen 1, 2491 Balen, Belgium" }, { "lat": "-20.85018921", "lng": "27.149088", "formatted_address": "A3, Botswana" }, { "lat": "46.90059280", "lng": "19.375057", "formatted_address": "Szabadsz\u00e1ll\u00e1s, 5214, 6080 Ungarn" }, { "lat": "13.82443810", "lng": "104.357506", "formatted_address": "Unnamed Road, Cambodia" }, { "lat": "-26.02803230", "lng": "31.199675", "formatted_address": "MR1, Swaziland" }, { "lat": "-38.29813004", "lng": "175.145828", "formatted_address": "1294-1370 State Highway, Te Kuiti 3985, Nowa Zelandia" }, { "lat": "52.09973907", "lng": "-2.933011", "formatted_address": "A438, Hereford, Herefordshire HR4, UK" }, { "lat": "37.60485458", "lng": "127.060005", "formatted_address": "137 Hwarang-ro 32-gil, Seongbuk-gu, Seoul, South Korea" }, { "lat": "53.13431549", "lng": "-6.460676", "formatted_address": "Unnamed Road, Co. Wicklow, Ireland" }, { "lat": "64.71215057", "lng": "-14.399980", "formatted_address": "\u00dej\u00f3\u00f0vegur, Iceland" }, { "lat": "-2.89026594", "lng": "-58.984100", "formatted_address": "AM-010, Itacoatiara - AM, 69100-000, Brasilien" }, { "lat": "-33.49530029", "lng": "150.403305", "formatted_address": "128 Mount Irvine Rd, Mount Wilson NSW 2786, Australien" }, { "lat": "51.35180664", "lng": "5.143310", "formatted_address": "Pikoreistraat 3, 5541 NS Reusel, The Netherlands" }, { "lat": "49.29639435", "lng": "17.732687", "formatted_address": "Hradsk\u00e1 306, 763 17 Lukov, Czech Republic" }, { "lat": "47.29020691", "lng": "26.820904", "formatted_address": "DJ281C, Romania" }, { "lat": "46.28122711", "lng": "15.230078", "formatted_address": "Gorica pri \u0160martnem 22m, 3201 \u0160martno v Ro\u017eni dolini, Slovenia" }, { "lat": "59.40555573", "lng": "24.805511", "formatted_address": "Kuldala tee 4, Peetri, 75312 Harjumaa, Estonia" }, { "lat": "-15.65590191", "lng": "-74.088715", "formatted_address": "Unnamed Road, Peru" }, { "lat": "52.49187088", "lng": "85.134384", "formatted_address": "ulitsa Kutuzova, Bi\u00efsk, Kra\u00ef de l\\'Alta\u00ef, Russie" }, { "lat": "48.02836609", "lng": "37.793392", "formatted_address": "ulitsa Artema, 159, Donetsk, Donetsk Oblast, Ukraine" }, { "lat": "17.51119423", "lng": "104.059196", "formatted_address": "Unnamed Road, Tambon Tha Ruea, Amphoe Na Wa, Chang Wat Nakhon Phanom 48180, Thailand" }, { "lat": "47.42493057", "lng": "8.379424", "formatted_address": "E60, 8957 Spreitenbach, Switzerland" }, { "lat": "65.34773254", "lng": "26.661592", "formatted_address": "18775 1680-1772, 93140 Pudasj\u00e4rvi, Finlande" }, { "lat": "41.09249115", "lng": "23.923670", "formatted_address": "Unnamed Road, Perichora 620 45, Greece" }, { "lat": "4.57211924", "lng": "-75.633659", "formatted_address": "40QN, Salento, Quind\u00edo, Kolumbia" }, { "lat": "45.44415283", "lng": "17.186386", "formatted_address": "Ul. Stjepana \u0160irca 19, 34550, Prekopakra, Croatia" }, { "lat": "45.22992325", "lng": "2.420733", "formatted_address": "Pons, 15380 Anglards-de-Salers, France" }, { "lat": "-27.88146782", "lng": "29.335831", "formatted_address": "R722, South Africa" }, { "lat": "54.92005539", "lng": "11.315936", "formatted_address": "Vigvejen, 4913 Horslunde, Denmark" }, { "lat": "19.20094109", "lng": "-98.872864", "formatted_address": "Calle R\u00edo San Juan, Temamatla, State of Mexico, Mexico" }, { "lat": "42.70099258", "lng": "26.329659", "formatted_address": "Unnamed Road, 8802 Sliven, Bulgaria" }, { "lat": "39.86167145", "lng": "25.057482", "formatted_address": "Unnamed Road, Limnos 814 00, Greece" }, { "lat": "-23.67411613", "lng": "133.719070", "formatted_address": "Unnamed Road, Burt Plain NT 0872, Australia" }, { "lat": "-25.90452385", "lng": "31.313219", "formatted_address": "MR1, Suazi" }, { "lat": "31.95982170", "lng": "34.861401", "formatted_address": "Eitan Street, Nir Cvi, Izrael" }, { "lat": "49.61102295", "lng": "35.541664", "formatted_address": "E105, Kharkiv Oblast, Ukraine" }, { "lat": "-41.33517456", "lng": "173.097672", "formatted_address": "238-272 Golden Hills Road, Brightwater 7091, New Zealand" },
+    { "lat": "-46.24020767", "lng": "-71.493973", "formatted_address": "RP45, Santa Cruz, Argentina" }, { "lat": "52.12020874", "lng": "4.789817", "formatted_address": "Meije 132-188, 2411 Bodegraven, Netherlands" }, { "lat": "54.90497208", "lng": "9.613877", "formatted_address": "Brovej, 6320 Egernsund, Denmark" }, { "lat": "49.97837448", "lng": "17.163378", "formatted_address": "11, 795 01 Star\u00e1 Ves, Czech Republic" }, { "lat": "1.57760465", "lng": "104.183037", "formatted_address": "5460, Lebuhraya Senai-desaru, 82200 Bandar Penawar, Johor, Malaysia" }, { "lat": "7.65417290", "lng": "-73.335884", "formatted_address": "I-45A, La Esperanza, Kolumbia" }, { "lat": "46.81372070", "lng": "16.136312", "formatted_address": "Otovci 19, 9202 Ma\u010dkovci, Slovenia" }, { "lat": "50.44110107", "lng": "5.709276", "formatted_address": "Hameau de Stoqueu, 4920 Aywaille, Belgium" }, { "lat": "12.75608540", "lng": "103.444283", "formatted_address": "Unnamed Road, Cambodja" }, { "lat": "47.51273727", "lng": "18.831871", "formatted_address": "2071 P\u00e1ty, Kossuth Street 15, Hungary" }, { "lat": "56.27129364", "lng": "14.753254", "formatted_address": "Hemsj\u00f6v\u00e4gen 1533, 376 36 Sv\u00e4ngsta, Su\u00e8de" }, { "lat": "63.74209595", "lng": "-68.547180", "formatted_address": "Akilliq, Iqaluit, NU, Canada" }, { "lat": "1.27160096", "lng": "103.620728", "formatted_address": "150 Tuas South Ave 5, Singapore 637363" }, { "lat": "45.97033310", "lng": "1.408924", "formatted_address": "Rue Victor Hugo, 87240 Ambazac, France" }, { "lat": "37.56420135", "lng": "127.034294", "formatted_address": "South Korea, Seoul, Doseon-dong, 101 \uc131\ub3d9\uc0bc\uc131\uc250\ub974\ube4c" }, { "lat": "45.45346451", "lng": "14.890338", "formatted_address": "D3, 51311, Skrad, Croatia" }, { "lat": "17.09970474", "lng": "101.479500", "formatted_address": "Unnamed Road, Tambon Loei Wang Sai, Amphoe Phu Luang, Chang Wat Loei 42160, Thailand" }, { "lat": "53.55101013", "lng": "-7.411050", "formatted_address": "Unnamed Road, Co. Westmeath, Ireland" }, { "lat": "-30.16390419", "lng": "28.683592", "formatted_address": "Unnamed Road, Bellford, South Africa" }, { "lat": "65.88184357", "lng": "-17.433475", "formatted_address": "A\u00f0aldalsvegur, Islanda" }, { "lat": "32.83405304", "lng": "-16.911598", "formatted_address": "219-221 W Homan St, Baytown, TX 77520, USA" }, { "lat": "44.67507172", "lng": "23.722523", "formatted_address": "Unnamed Road, V\u0103lu\u021ba, Romania" }, { "lat": "65.86947632", "lng": "26.729174", "formatted_address": "Sy\u00f6tteentie 27, 97700 Ranua, Finland" }, { "lat": "42.14544678", "lng": "27.230038", "formatted_address": "Unnamed Road, Kirovo, Bulgaria" }, { "lat": "54.57268143", "lng": "17.493408", "formatted_address": "Akacjowa, 76-231, Polska" }, { "lat": "52.50797272", "lng": "13.476312", "formatted_address": "Tasdorfer Stra\u00dfe 36-37, 10365 Berlin, Niemcy" }, { "lat": "41.33102798", "lng": "-7.700401", "formatted_address": "EM1231, 5000, Portugal" }, { "lat": "-24.65747452", "lng": "25.963800", "formatted_address": "Maaloso, Gaborone, Botswana" }, { "lat": "47.34276581", "lng": "8.601733", "formatted_address": "8125, Szwajcaria" }, { "lat": "59.91134644", "lng": "71.165916", "formatted_address": "R404, Khanty-Mansiyskiy avtonomnyy okrug, Russia, 628327" }, { "lat": "-45.18393326", "lng": "-72.598671", "formatted_address": "Unnamed Road, Ays\u00e9n, XI Regi\u00f3n, Chile" }, { "lat": "56.62951660", "lng": "21.294771", "formatted_address": "P112, Tadai\u0137i parish, LV-3452, Latvia" }, { "lat": "21.00825691", "lng": "-89.574287", "formatted_address": "Calle 25\u1d9c, La Florida, 97138 Merida, Yucatan, Mexico" }, { "lat": "55.86947632", "lng": "23.209541", "formatted_address": "Pami\u0161k\u0117s gatv\u0117, Motai\u010diai 80179, Lituanie" }, { "lat": "62.76212311", "lng": "8.533157", "formatted_address": "Rv70 320, 6620 \u00c5lvundeid, Norway" }, { "lat": "57.61791611", "lng": "-3.705751", "formatted_address": "Unnamed Road, Forres, Moray IV36 2TL, UK" }, { "lat": "48.39529419", "lng": "17.438972", "formatted_address": "504004, 919 01 Dlh\u00e1, Slovakia" }, { "lat": "39.25313187", "lng": "9.326392", "formatted_address": "Via fra Ponti, 09044 Quartucciu CA, Italia" }, { "lat": "52.71321106", "lng": "-0.745819", "formatted_address": "19 Whissendine Road, Ashwell, Oakham, Rutland LE15 7LT, UK" }, { "lat": "54.65028381", "lng": "23.112103", "formatted_address": "5110 40, Gudeliai 70199, Lithuania" }, { "lat": "61.50436020", "lng": "24.782000", "formatted_address": "14229 12-144, 36880 Kangasala, Finland" }, { "lat": "52.60941315", "lng": "13.323554", "formatted_address": "Gutachstra\u00dfe 8, 13469 Berlin, Germany" }, { "lat": "49.48051834", "lng": "15.787534", "formatted_address": "34822, 588 13 Poln\u00e1, Czech Republic" }, { "lat": "37.55912399", "lng": "126.838921", "formatted_address": "674-1 Deungchon-dong, Gangseo-gu, S\u00e9oul, Cor\u00e9e du Sud" }, { "lat": "-33.01150513", "lng": "27.674707", "formatted_address": "R346, Republika Po\u0142udniowej Afryki" }, { "lat": "53.72327805", "lng": "-7.447762", "formatted_address": "Unnamed Road, Co. Westmeath, Ireland" }, { "lat": "51.18840408", "lng": "32.175797", "formatted_address": "\u041c02, \u0427\u0435\u0440\u043d\u0456\u0433\u0456\u0432\u0441\u044c\u043a\u0430 \u043e\u0431\u043b\u0430\u0441\u0442\u044c, \u0423\u043a\u0440\u0430\u0457\u043d\u0430" }, { "lat": "-46.21980667", "lng": "168.676208", "formatted_address": "915 Cross Road, Pebbly Hill 9872, New Zealand" }, { "lat": "55.46077347", "lng": "8.676708", "formatted_address": "Darumvej 70, 6740 Bramming, Danemark" }, { "lat": "55.06234741", "lng": "74.933800", "formatted_address": "P-254, Omskaya oblast', Russia" }, { "lat": "38.90952301", "lng": "23.324722", "formatted_address": "EO Chalkidas Edipsou, Kerasia 340 10, Gr\u00e8ce" }, { "lat": "2.77900910", "lng": "101.469421", "formatted_address": "5, 42700 Banting, Selangor, Malaysia" },
+    { "lat": "46.90727234", "lng": "9.863383", "formatted_address": "G\u00fcnschar\u00fcel, 7247 Klosters-Serneus, Switzerland" }, { "lat": "61.48575211", "lng": "16.936184", "formatted_address": "664, 825 96 En\u00e5nger, \u30b9\u30a6\u30a7\u30fc\u30c7\u30f3" }, { "lat": "45.23656464", "lng": "15.376019", "formatted_address": "D23, 47264, Kamenica Skradni\u010dka, Croatia" }, { "lat": "45.78044128", "lng": "11.908622", "formatted_address": "Via Castellana, 30, 31011 Asolo Treviso, Italy" }, { "lat": "-47.27962494", "lng": "-71.475098", "formatted_address": "RP41, Santa Cruz, Argentina" }, { "lat": "46.02725601", "lng": "14.346210", "formatted_address": "Brezje pri Dobrovi 17, 1356 Dobrova, Slovenia" }, { "lat": "12.29092407", "lng": "105.750305", "formatted_address": "Unnamed Road, Cambodia" }, { "lat": "52.02669144", "lng": "4.353344", "formatted_address": "Zwaluwsingel 13, 2289 EP Rijswijk, The Netherlands" }, { "lat": "50.54687500", "lng": "3.857358", "formatted_address": "Rue de Bauffe 5-17, 7050 Jurbise, Belgium" }, { "lat": "-26.49639511", "lng": "31.295734", "formatted_address": "King Mswati III Avenue West, Matsapha, Swaziland" }, { "lat": "-19.70080757", "lng": "22.021978", "formatted_address": "Unnamed Road, Botswana" }, { "lat": "57.31222916", "lng": "25.648300", "formatted_address": "E77, Rauna parish, LV-4131, Lettonie" }, { "lat": "-40.90985870", "lng": "147.682404", "formatted_address": "Gunnston, 2828 Waterhouse Rd, Waterhouse TAS 7262, Australia" }, { "lat": "27.52182770", "lng": "89.747543", "formatted_address": "Thimphu-Wangdue Phodrang Hwy, Bhutan" }, { "lat": "58.33944321", "lng": "26.725042", "formatted_address": "Jalaka 64, 50105 Tartu, Estonia" }, { "lat": "43.01473999", "lng": "23.474178", "formatted_address": "161, 2152 Rashkovo, Bulgaria" }, { "lat": "46.36901093", "lng": "18.136969", "formatted_address": "7200 Domb\u00f3v\u00e1r, B\u00e1thori Street 1, W\u0119gry" }, { "lat": "46.51159668", "lng": "23.661295", "formatted_address": "DN75, Romania" }, { "lat": "68.73543549", "lng": "16.947844", "formatted_address": "Riksveg 848 80, 9450 Hamnvik, Norway" }, { "lat": "47.90674210", "lng": "18.211271", "formatted_address": "64 8-26, 947 03 Hurbanovo-Pavlov Dvor, S\u0142owacja" }, { "lat": "45.58884430", "lng": "-84.572914", "formatted_address": "4155-4285 Riggsville Rd, Cheboygan, MI 49721, Stany Zjednoczone" }, { "lat": "65.30491638", "lng": "-20.907316", "formatted_address": "Mi\u00f0fjar\u00f0arvegur, Iceland" }, { "lat": "54.11185455", "lng": "15.728863", "formatted_address": "78-113 \u015awielubie, Polska" }, { "lat": "2.50096297", "lng": "-60.883038", "formatted_address": "BR-174, Boa Vista - RR, Brazil" }, { "lat": "48.60364151", "lng": "-2.257051", "formatted_address": "27 Rue ville Pichet, 22380 Saint-Cast-le-Guildo, Francja" }, { "lat": "24.61393166", "lng": "-101.373596", "formatted_address": "Saltillo - Zacatecas, Pozo Colorado, Zacatecas, Mexico" }, { "lat": "32.97833252", "lng": "35.355556", "formatted_address": "Unnamed Road, Beit Jann, \u0627\u0633\u0631\u0627\u0626\u06cc\u0644" }, { "lat": "4.66821480", "lng": "-73.977371", "formatted_address": "I-50 # 99, La Calera, Cundinamarca, Kolumbia" }, { "lat": "46.00398254", "lng": "15.173377", "formatted_address": "738, 8297 \u0160entjan\u017e, Slov\u00e9nie" }, { "lat": "37.27977753", "lng": "14.978592", "formatted_address": "SS194, 96016 Lentini Prowincja Syrakuzy, W\u0142ochy" }, { "lat": "24.90000343", "lng": "55.046803", "formatted_address": "Unnamed Road - Dubai - United Arab Emirates" }, { "lat": "-46.28886032", "lng": "168.250839", "formatted_address": "292 Argyle-Otahuti Road, Waianiwa 9874, New Zealand" }, { "lat": "-37.73076630", "lng": "140.694107", "formatted_address": "280 Dartboogie Rd, Wandilo SA 5291, Australia" }, { "lat": "50.75102615", "lng": "15.318716", "formatted_address": "Ve Sladk\u00e9 D\u00ed\u0159e, 468 61 Desn\u00e1, Czech Republic" }, { "lat": "60.49793243", "lng": "72.609047", "formatted_address": "Tyumen' - Pyt'-Yakh, Khanty-Mansiyskiy avtonomnyy okrug, Russia, 628380" }, { "lat": "47.99661636", "lng": "17.282656", "formatted_address": "Pri hr\u00e1dzi 16, 931 01 \u0160amor\u00edn-\u010cilistov, S\u0142owacja" }, { "lat": "55.88812256", "lng": "21.274057", "formatted_address": "Vytauto gatv\u0117 120, Kretinga 97133, Lithuania" }, { "lat": "51.81807327", "lng": "21.953800", "formatted_address": "Unnamed Road, Polska" }, { "lat": "3.01219511", "lng": "101.451424", "formatted_address": "11-17, Jalan Sri Mersing 23, Taman Sri Andalas, 41200 Klang, Selangor, Malaysia" }, { "lat": "-11.15110302", "lng": "-76.624390", "formatted_address": "1NC, P\u00e9rou" }, { "lat": "-23.19493484", "lng": "28.296227", "formatted_address": "N11, South Africa" }, { "lat": "37.98846817", "lng": "22.531940", "formatted_address": "Epar.Od. Xilokastrou - Mannas 209, Panariti 202 00, Greece" }, { "lat": "43.59922028", "lng": "27.480412", "formatted_address": "27, 9379 Vladimirovo, Bulgaria" }, { "lat": "64.94818878", "lng": "25.547855", "formatted_address": "Tulipiipuntie 10, 90420 Oulu, Finland" }, { "lat": "11.43469906", "lng": "105.373146", "formatted_address": "Unnamed Road, Cambodia" }, { "lat": "47.50183487", "lng": "18.611591", "formatted_address": "2060 Bicske, 1, W\u0119gry" }, { "lat": "45.04608917", "lng": "28.614136", "formatted_address": "DN22A, Nalbant, Romania" }, { "lat": "43.03525162", "lng": "-7.409763", "formatted_address": "LU-P-2917, 20, 27127 Barredo, Lugo, Spain" }, { "lat": "46.50491333", "lng": "-87.164978", "formatted_address": "101-375 Shot Point Dr, Marquette, MI 49855, USA" }, { "lat": "64.69209290", "lng": "21.239317", "formatted_address": "Vintergatan 25, 932 32 Skellefte\u00e5, Suecia" }, { "lat": "-26.87456703", "lng": "31.596979", "formatted_address": "MR14, Sithobela, Suazi" }, { "lat": "65.76812744", "lng": "-21.700106", "formatted_address": "Strandavegur, Islande" },
+    { "lat": "58.35759354", "lng": "26.625479", "formatted_address": "Tartu\u2013Viljandi\u2013Kilingi-N\u00f5mme, Haage, 61402 Comt\u00e9 de Tartu, Estonie" }, { "lat": "52.70069504", "lng": "-6.267129", "formatted_address": "R772, Co. Wexford, Ireland" }, { "lat": "53.14714432", "lng": "-4.199483", "formatted_address": "3 Ffordd Minffordd, Llanrug, Caernarfon LL55 4PE, Yhdistynyt kuningaskunta" }, { "lat": "70.00166321", "lng": "29.212105", "formatted_address": "E6 110, 9840 Varangerbotn, Norway" }, { "lat": "-39.88848114", "lng": "-65.882202", "formatted_address": "RP4, R\u00edo Negro, Argentina" }, { "lat": "50.93070221", "lng": "5.455665", "formatted_address": "Steenakkerstraat 94-120, 3590 Diepenbeek, Belgium" }, { "lat": "-19.17506218", "lng": "23.751268", "formatted_address": "Unnamed Road, Botswana" }, { "lat": "46.08849716", "lng": "3.443697", "formatted_address": "27 Rue de la Gare, 03270 Hauterive, Francja" }, { "lat": "52.01156998", "lng": "4.586602", "formatted_address": "Goudsbloemstraat 8, 2761 GN Zevenhuizen, The Netherlands" }, { "lat": "39.07997131", "lng": "-8.446593", "formatted_address": "Unnamed Road, 2100, Portugal" }, { "lat": "52.40688705", "lng": "9.660364", "formatted_address": "Hogrefestra\u00dfe 8, 30419 Hanower, Niemcy" }, { "lat": "57.42859268", "lng": "24.925669", "formatted_address": "P14, Stalbes pagasts, LV-4151, Lettonie" }, { "lat": "47.32904816", "lng": "8.472098", "formatted_address": "Stationsstrasse 61, 8907 Wettswil am Albis, Switzerland" }, { "lat": "25.47825432", "lng": "-108.222046", "formatted_address": "Culiac\u00e1n - Los Mochis, Sinaloa, Mexico" }, { "lat": "55.56454086", "lng": "12.025475", "formatted_address": "Vibyvejen 37, 4130 Viby Sj\u00e6lland, Denmark" }, { "lat": "-6.87107277", "lng": "-49.621742", "formatted_address": "BR-155, 4451, Sapucaia - PA, 68548-000, Brazil" }, { "lat": "30.12887192", "lng": "35.145164", "formatted_address": "90, Israel" }, { "lat": "12.70943546", "lng": "102.442085", "formatted_address": "3299, Tambon Nong Bon, Amphoe Bo Rai, Chang Wat Trat 23140, Thailand" }, { "lat": "45.46484375", "lng": "16.766323", "formatted_address": "Hrvatska autocesta baza Kutina, 44320, Kutina, Croatie" }, { "lat": "45.98352432", "lng": "18.448606", "formatted_address": "7751 Szederk\u00e9ny, M60, Hungary" }, { "lat": "55.81391144", "lng": "21.687269", "formatted_address": "Saul\u0117tekio g., Kule 90370, Litwa" }, { "lat": "44.61137390", "lng": "8.607022", "formatted_address": "Localit\u00e0 Battagliosi, 18-20, 15074 Molare, Alessandria, Italy" }, { "lat": "62.91973495", "lng": "18.063517", "formatted_address": "332, 872 97 Skog, Schweden" }, { "lat": "-34.90509415", "lng": "117.611435", "formatted_address": "812 Redmond W Rd, Redmond West WA 6327, Australia" }, { "lat": "-2.51156282", "lng": "-44.024719", "formatted_address": "R. Sao Janu\u00e1rio, 19, S\u00e3o Jos\u00e9 de Ribamar - MA, 65110-000, Brazil" }, { "lat": "19.69531059", "lng": "-96.412788", "formatted_address": "Poza Rica - Veracruz, Palma Sola, Veracruz, Mexico" }, { "lat": "15.15605831", "lng": "105.361038", "formatted_address": "Unnamed Road, Tambon Fang Kham, Amphoe Sirindhorn, Chang Wat Ubon Ratchathani 34350, Thailand" }, { "lat": "38.74045563", "lng": "22.619196", "formatted_address": "Epar.Od. Thivas - Thermopilon, Molos Agios Konstantinos 350 09, Grekland" }, { "lat": "55.12766266", "lng": "-7.710773", "formatted_address": "Unnamed Road, Co. Donegal, Ireland" }, { "lat": "57.02867889", "lng": "9.930466", "formatted_address": "Fasanvej 2, 9000 Aalborg, Denmark" }, { "lat": "-45.83908081", "lng": "-71.850525", "formatted_address": "X-695, Coyhaique, XI Regi\u00f3n, Chile" }, { "lat": "46.79063034", "lng": "-0.517162", "formatted_address": "D38, 79300 Bressuire, France" }, { "lat": "54.24485779", "lng": "19.456041", "formatted_address": "Strumykowa 39-45, Elbl\u0105g, Polonia" }, { "lat": "51.43886566", "lng": "4.696782", "formatted_address": "Blauwputten, 2321 Hoogstraten, Belgium" }, { "lat": "58.62883759", "lng": "25.654791", "formatted_address": "P\u00f5ltsamaa-V\u00f5hma, Koksvere, 70604 Viljandi County, Estonia" }, { "lat": "48.84371185", "lng": "17.230892", "formatted_address": "Boorova 343\/29, 909 01 Skalica, Slovakia" }, { "lat": "62.16145706", "lng": "5.173606", "formatted_address": "Fylkesveg 633 80, 6750 Stadlandet, Norway" }, { "lat": "-20.56370354", "lng": "26.189819", "formatted_address": "Unnamed Road, Sowa, Botswana" }, { "lat": "47.41760635", "lng": "7.102322", "formatted_address": "E27, 2900 Pruntrut, Schweiz" }, { "lat": "52.19562531", "lng": "10.986431", "formatted_address": "Unnamed Road, 38350 Helmstedt, Germany" }, { "lat": "32.25027466", "lng": "-91.550514", "formatted_address": "LA-577, Winnsboro, LA 71295, USA" }, { "lat": "45.97993851", "lng": "27.764305", "formatted_address": "DJ251A, Dr\u0103gu\u0219eni, Rumunia" }, { "lat": "57.81200790", "lng": "39.507584", "formatted_address": "\u0420151, Yaroslavl Oblast, Russia" }, { "lat": "55.81117249", "lng": "26.696451", "formatted_address": "P68, Skrudaliena parish, LV-5470, \u0141otwa" }, { "lat": "52.98669052", "lng": "5.539458", "formatted_address": "De Band 12, 8614 JE Oudega Gem Wymbritserad, The Netherlands" }, { "lat": "43.03918839", "lng": "25.892637", "formatted_address": "4004, 5090 Zlataritsa, Bulgaria" }, { "lat": "63.53300858", "lng": "26.579884", "formatted_address": "5613 1050-1082, 74680 Kiuruvesi, Finland" }, { "lat": "45.53567886", "lng": "13.722687", "formatted_address": "Cesta na Markovec 19a, 6000 Koper - Capodistria, Slovenia" }, { "lat": "49.99824142", "lng": "15.739959", "formatted_address": "32226, 530 02 T\u0159ebosice, Czech Republic" }, { "lat": "11.09784126", "lng": "103.354019", "formatted_address": "Union Rd, Cambodia" }, { "lat": "27.22856522", "lng": "90.669182", "formatted_address": "Unnamed Road, Bhutan" }, { "lat": "28.06097031", "lng": "-15.730665", "formatted_address": "GC-200, 35489 Agaete, Las Palmas, Spain" },
+    { "lat": "-25.79352951", "lng": "31.442116", "formatted_address": "MR1, Swaziland" }, { "lat": "54.15830231", "lng": "-2.251069", "formatted_address": "Pennine Way, North Yorkshire, Storbritannien" }, { "lat": "-38.46004486", "lng": "177.829346", "formatted_address": "172 Whatatutu Road, Te Karaka 4094, Nowa Zelandia" }, { "lat": "-26.27580643", "lng": "28.039400", "formatted_address": "14 Ferero Street, Johannesburg South 2091, South Africa" }, { "lat": "45.79475021", "lng": "15.925063", "formatted_address": "Zagreba\u010dka Avenue, 10000, Zagreb, Croatia" }, { "lat": "46.1732178", "lng": "1.87373249", "formatted_address": "France Creuse Guéret" }];
+
+    let index = Math.round((Math.random() * randomLocations.length) - 1);
+    let guess_coord = { lat: parseFloat(randomLocations[index].lat), lng: parseFloat(randomLocations[index].lng) };
+
+    // Set and configure streetview 
+    function initialize() {
+
+        console.log("Coordinates displayed: lat=" + guess_coord.lat + " lng=" + guess_coord.lng);
+
+        // STREET VIEW
+        panorama = new google.maps.StreetViewPanorama(
+            document.getElementById("street-view"),
+            {
+                position: guess_coord,
+                pov: { heading: 165, pitch: 0 },
+                zoom: 1,
+                showRoadLabels: false,
+                addressControl: false
+            }
+        );
+
+        // GUESSER
+        map = new google.maps.Map(document.getElementById("map"), {
+            zoom: 1 + (4 * france_selected),
+            center: { lat: 46.63, lng: 2.75 },
+            fullscreenControl: false,
+            scrollwheel: true,
+            streetViewControl: false,
+            gestureHandling: "greedy",
+            mapTypeControl: false
+        });
+
+        // Create the initial InfoWindow.
+        infoWindow = new google.maps.InfoWindow({
+            content: "Click the map to get Lat/Lng!",
+            position: { lat: 0, lng: 0 },
+        });
+
+        // Configure the click listener.
+        map.addListener("click", (mapsMouseEvent) => {
+            // Close the current InfoWindow.
+            infoWindow.close();
+            // Create a new InfoWindow.
+            infoWindow = new google.maps.InfoWindow({
+                position: mapsMouseEvent.latLng,
+            });
+            infoWindow.setContent("<img src='point.png'>");
+            infoWindow.open(map);
+
+            select_coord = mapsMouseEvent.latLng.toJSON();
+        });
+    }
+
+    // Reload game environment when a round is over
+    function reconfigure() {
+        index_used[index_used.length] = index;
+        document.getElementById("round").innerHTML = "Round: " + round + "/" + max_round;
+        if (!france_selected) {
+            do {
+                index = Math.round((Math.random() * randomLocations.length) - 1);
+            } while (index_used.indexOf(index) != -1)
+
+            guess_coord = { lat: parseFloat(randomLocations[index].lat), lng: parseFloat(randomLocations[index].lng) };
+        }
+        else {
+            do {
+                index = Math.round((Math.random() * randomFranceLocations.length) - 1);
+            } while (index_used.indexOf(index) != -1)
+
+            guess_coord = { lat: parseFloat(randomFranceLocations[index].lat), lng: parseFloat(randomFranceLocations[index].lng) };
+        }
+
+        document.getElementById("guess").removeAttribute('class', 'hidden');
+        document.getElementById("next").setAttribute('class', 'hidden');
+        initialize();
+    }
+
+    // Check if guess is correct and then execute reconfiguring function
+    function guess() {
+        if (select_coord == undefined) {
+            alert("Vous devez choisir un endroit !");
+            return;
+        }
+
+        infoWindow.close();
+
+        let street_view = { "lat": panorama.position.lat(), "lng": panorama.position.lng() };
+        let distance = getDistance(street_view.lat, street_view.lng, select_coord.lat, select_coord.lng);
+
+        const flightPath = new google.maps.Polyline({
+            path: [street_view, select_coord],
+            strokeColor: "#FF0000",
+            strokeOpacity: 1.0,
+            strokeWeight: 2,
+        });
+        flightPath.setMap(map);
+
+        let text_label;
+        if (!france_selected)
+            text_label = randomLocations[index].formatted_address;
+        else
+            text_label = randomFranceLocations[index].formatted_address;
+
+        new google.maps.Marker({
+            position: guess_coord,
+            map,
+            label: {
+                text: text_label,
+                fontSize: "13px",
+                fontWeight: "bold",
+                color: 'black'
+            }
+        });
+
+        if (Math.abs(street_view.lat - guess_coord.lat) > 0.02 || Math.abs(street_view.lng - guess_coord.lng) > 0.02) {
+            new google.maps.Marker({
+                position: street_view,
+                map,
+                icon: "point.png"
+            });
+        }
+
+        new google.maps.Marker({
+            position: select_coord,
+            map,
+            icon: "point.png"
+        });
+
+        infoWindow = new google.maps.InfoWindow({
+            position: { lat: (select_coord.lat + street_view.lat) / 2, lng: (select_coord.lng + street_view.lng) / 2 },
+        });
+        infoWindow.setContent(Math.round(distance).toString() + "km");
+        infoWindow.open(map);
+
+        round++;
+        if (round > max_round) {
+            setTimeout(() => {
+                alert("Vous avez remporté un score de " + score + " ! Bravo !");
+            }, 4000);
+        } else {
+            document.getElementById("next").removeAttribute('class', 'hidden');
+        }
+
+        let previous_score = score;
+
+        if (distance < 50) score += 10; else if (distance < 200) score += 7; else if (distance < 400) score += 5; else if (distance
+            < 1000) score += 4; else if (distance < 1500) score += 3; else if (distance < 2000) score += 2; else score++;
+
+        document.getElementById("guess").setAttribute('class', 'hidden');
+        document.getElementById("score").innerHTML = "Score: " + score;
+
+        let msg;
+        if (score - previous_score <= 1)
+            msg = "Dommage ! +1 Score";
+        else if (score - previous_score == 10)
+            msg = "Bravo ! +10 score !"
+        else
+            msg = "+" + String(score - previous_score) + " score !"
+
+        popup(msg);
+    }
+
+    function toggleFilter() {
+        let
+            street = document.getElementById("street-view"); let button = document.getElementById("filter"); if (color_inverted) {
+                street.setAttribute("style", "filter: invert(0);");
+                button.setAttribute("style", "background-color: blue; width: min-content;"); color_inverted = false;
+            } else {
+            street.setAttribute("style", "filter: invert(1);");
+            button.setAttribute("style", "background-color: red; width: min-content;"); color_inverted = true;
+        }
+        console.log(panorama.position.lat() + " " + panorama.position.lng());
+    }
+
+    function toggleLocationPreference() {
+        let
+            button = document.getElementById("loc_pref"); index_used = []; if (button.innerHTML == "World") {
+                france_selected = true;
+                button.setAttribute("style", "background-color: brown; width: min-content;"); button.innerHTML = "France";
+            } else {
+            france_selected = false; button.setAttribute("style", "background-color: green; width: min-content;");
+            button.innerHTML = "World";
+        } reconfigure();
+    }
+
+    function getDistance(lat1, lon1, lat2, lon2) {
+        if ((lat1 == lat2) &&
+            (lon1 == lon2)) { return 0; } else {
+            var radlat1 = Math.PI * lat1 / 180; var radlat2 = Math.PI * lat2 / 180; var
+                theta = lon1 - lon2; var radtheta = Math.PI * theta / 180; var dist = Math.sin(radlat1) * Math.sin(radlat2) +
+                    Math.cos(radlat1) * Math.cos(radlat2) * Math.cos(radtheta); if (dist > 1) {
+                        dist = 1;
+                    }
+            dist = Math.acos(dist);
+            dist = dist * 180 / Math.PI;
+            dist = dist * 60 * 1.1515;
+            dist = dist * 1.609344
+            return dist;
+        }
+    }
+
+    function popup(text) {
+        const p = document.createElement("div");
+        p.innerHTML = text;
+        p.className = "popup";
+        p.id = popup_reset('popup-temporary');
+        document.getElementsByTagName('body')[0].appendChild(p);
+        setTimeout(function () {
+            popup_fire(p.id, 10, (Array.from({ length: 100 }, (_, i) => i * 0.01).reverse()))
+        }, 2000);
+    };
+
+    function popup_reset(id) {
+        if (document.getElementById(id) != null) {
+            return popup_reset(id + '-altenative');
+        } else {
+            return id;
+        }
+    }
+
+    function popup_fire(id, dt, X) {
+        if (document.getElementById(id) != null) {
+            if (X.length) {
+                const p = document.getElementById(id);
+                p.style.opacity = X.shift();
+                setTimeout(function () {
+                    popup_fire(id, dt, X)
+                }, dt);
+            } else {
+                document.getElementById(id).remove();
+            }
+        }
+    };
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBVKH7fTxV_4vDny7uVGUi_OD03B7_pUvU&callback=initialize"
+    async></script>
+
+</html>
